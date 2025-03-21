@@ -23,23 +23,17 @@ fn could_not_parse_event_error() -> io::Error {
     io::Error::new(io::ErrorKind::Other, "Could not parse an event.")
 }
 
-pub(crate) fn parse_event(
-    buffer: &[u8],
-    input_available: bool,
-) -> io::Result<Option<InternalEvent>> {
+pub(crate) fn parse_event(buffer: &[u8]) -> io::Result<Option<InternalEvent>> {
     if buffer.is_empty() {
         return Ok(None);
     }
 
     match buffer[0] {
+        // ESC
         b'\x1B' => {
             if buffer.len() == 1 {
-                if input_available {
-                    // Possible Esc sequence
-                    Ok(None)
-                } else {
-                    Ok(Some(InternalEvent::Event(Event::Key(KeyCode::Esc.into()))))
-                }
+                // Dunno yet wait for more bytes
+                Ok(None)
             } else {
                 match buffer[1] {
                     b'O' => {
@@ -75,7 +69,7 @@ pub(crate) fn parse_event(
                     }
                     b'[' => parse_csi(buffer),
                     b'\x1B' => Ok(Some(InternalEvent::Event(Event::Key(KeyCode::Esc.into())))),
-                    _ => parse_event(&buffer[1..], input_available).map(|event_option| {
+                    _ => parse_event(&buffer[1..]).map(|event_option| {
                         event_option.map(|event| {
                             if let InternalEvent::Event(Event::Key(key_event)) = event {
                                 let mut alt_key_event = key_event;

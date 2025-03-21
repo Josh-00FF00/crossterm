@@ -96,10 +96,7 @@ impl EventSource for UnixInternalEventSource {
                             match self.tty_fd.read(&mut self.tty_buffer) {
                                 Ok(read_count) => {
                                     if read_count > 0 {
-                                        self.parser.advance(
-                                            &self.tty_buffer[..read_count],
-                                            read_count == TTY_BUFFER_SIZE,
-                                        );
+                                        self.parser.advance(&self.tty_buffer[..read_count]);
                                     }
                                 }
                                 Err(e) => {
@@ -195,13 +192,11 @@ impl Default for Parser {
 }
 
 impl Parser {
-    fn advance(&mut self, buffer: &[u8], more: bool) {
-        for (idx, byte) in buffer.iter().enumerate() {
-            let more = idx + 1 < buffer.len() || more;
-
+    fn advance(&mut self, buffer: &[u8]) {
+        for byte in buffer.iter() {
             self.buffer.push(*byte);
 
-            match parse_event(&self.buffer, more) {
+            match parse_event(&self.buffer) {
                 Ok(Some(ie)) => {
                     self.internal_events.push_back(ie);
                     self.buffer.clear();
