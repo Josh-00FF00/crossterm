@@ -92,14 +92,22 @@ impl EventSource for UnixInternalEventSource {
             for token in self.events.iter().map(|x| x.token()) {
                 match token {
                     TTY_TOKEN => {
+                        let mut waited = false;
                         loop {
                             match self.tty_fd.read(&mut self.tty_buffer) {
                                 Ok(read_count) => {
                                     if read_count > 0 {
-                                        self.parser.advance(
-                                            &self.tty_buffer[..read_count],
-                                            read_count == TTY_BUFFER_SIZE,
-                                        );
+                                        let needs_wait = self
+                                            .parser
+                                            .advance(&self.tty_buffer[..read_count], waited);
+
+                                        if needs_wait {
+                                            std::thread::sleep(Duration::from_millis(10));
+                                            waited = true;
+                                            continue;
+                                        } else {
+                                            waited = false;
+                                        }
                                     }
                                 }
                                 Err(e) => {
@@ -195,28 +203,31 @@ impl Default for Parser {
 }
 
 impl Parser {
-    fn advance(&mut self, buffer: &[u8], more: bool) {
-        for (idx, byte) in buffer.iter().enumerate() {
-            let more = idx + 1 < buffer.len() || more;
-
+    fn advance(&mut self, buffer: &[u8], waited: bool) -> bool {
+        let mut needs_wait = false;
+        for byte in buffer.iter() {
             self.buffer.push(*byte);
 
-            match parse_event(&self.buffer, more) {
+            match parse_event(&self.buffer, waited) {
                 Ok(Some(ie)) => {
                     self.internal_events.push_back(ie);
                     self.buffer.clear();
+                    needs_wait = false;
                 }
                 Ok(None) => {
                     // Event can't be parsed, because we don't have enough bytes for
                     // the current sequence. Keep the buffer and process next bytes.
+                    needs_wait = true;
                 }
                 Err(_) => {
                     // Event can't be parsed (not enough parameters, parameter is not a number, ...).
                     // Clear the buffer and continue with another sequence.
                     self.buffer.clear();
+                    needs_wait = false;
                 }
             }
         }
+        needs_wait
     }
 }
 

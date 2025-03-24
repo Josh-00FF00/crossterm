@@ -23,10 +23,7 @@ fn could_not_parse_event_error() -> io::Error {
     io::Error::new(io::ErrorKind::Other, "Could not parse an event.")
 }
 
-pub(crate) fn parse_event(
-    buffer: &[u8],
-    input_available: bool,
-) -> io::Result<Option<InternalEvent>> {
+pub(crate) fn parse_event(buffer: &[u8], waited: bool) -> io::Result<Option<InternalEvent>> {
     if buffer.is_empty() {
         return Ok(None);
     }
@@ -34,11 +31,11 @@ pub(crate) fn parse_event(
     match buffer[0] {
         b'\x1B' => {
             if buffer.len() == 1 {
-                if input_available {
+                if waited {
+                    Ok(Some(InternalEvent::Event(Event::Key(KeyCode::Esc.into()))))
+                } else {
                     // Possible Esc sequence
                     Ok(None)
-                } else {
-                    Ok(Some(InternalEvent::Event(Event::Key(KeyCode::Esc.into()))))
                 }
             } else {
                 match buffer[1] {
@@ -75,7 +72,7 @@ pub(crate) fn parse_event(
                     }
                     b'[' => parse_csi(buffer),
                     b'\x1B' => Ok(Some(InternalEvent::Event(Event::Key(KeyCode::Esc.into())))),
-                    _ => parse_event(&buffer[1..], input_available).map(|event_option| {
+                    _ => parse_event(&buffer[1..], waited).map(|event_option| {
                         event_option.map(|event| {
                             if let InternalEvent::Event(Event::Key(key_event)) = event {
                                 let mut alt_key_event = key_event;
@@ -870,14 +867,14 @@ mod tests {
     #[test]
     fn test_esc_key() {
         assert_eq!(
-            parse_event(b"\x1B", false).unwrap(),
+            parse_event(b"\x1B", true).unwrap(),
             Some(InternalEvent::Event(Event::Key(KeyCode::Esc.into()))),
         );
     }
 
     #[test]
     fn test_possible_esc_sequence() {
-        assert_eq!(parse_event(b"\x1B", true).unwrap(), None,);
+        assert_eq!(parse_event(b"\x1B", false).unwrap(), None,);
     }
 
     #[test]
